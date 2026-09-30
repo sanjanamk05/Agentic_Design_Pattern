@@ -1,6 +1,6 @@
 # Agentic design pattern: tool-using agent
 
-A set of LangGraph agentic-pattern demonstrations with a Streamlit chat interface. Choose between the tool-using workflow and the supervisor-worker workflow from the selector at the top of the app.
+A set of LangGraph agentic-pattern demonstrations with a Streamlit chat interface. Choose the tool-using, supervisor-worker, or reflection workflow from the selector at the top of the app.
 
 ## How it works
 
@@ -19,6 +19,10 @@ The calculator parses an allowlisted arithmetic syntax tree; it does not use Pyt
 4. Definitions, explanations, and other non-math/non-leave requests go to a general-answer worker.
 
 The leave database is created on first use at `tools/employee_leaves.db` and seeded with demo balances: Alice (12), Bob (5), and Charlie (18). The database file is ignored by Git.
+
+### Reflection workflow
+
+The generator writes a draft for the submitted task. A critic reviews it and either approves it or returns actionable feedback for a revision. The graph allows up to three drafts. In the UI, open **Review rounds** to see each draft, its critic feedback, and its approval status. This is a review trace, not hidden chain-of-thought.
 
 ## Requirements
 
@@ -53,7 +57,7 @@ The model defaults to `gpt-4o-mini`. Set `OPENAI_MODEL` in `.env` to choose a co
 streamlit run app.py
 ```
 
-The app opens at `http://localhost:8501`. Select a workflow, then try prompts such as `Define AI`, `What is the square of the average of 10 and 5?`, or `What is the leave balance for Alice?`. The chat labels the selected route or worker. Each workflow has its own in-memory conversation history; **New conversation** clears the selected workflow's history.
+The app opens at `http://localhost:8501`. Select a workflow, then try prompts such as `Define AI`, `What is the square of the average of 10 and 5?`, `What is the leave balance for Alice?`, or `Explain one benefit and one limitation of using AI in education.` The chat labels the selected route or worker. Each workflow has its own in-memory conversation history; **New conversation** clears the selected workflow's history.
 
 The backend can also be run without the UI:
 
@@ -69,7 +73,7 @@ Run module commands from the repository root so package-relative imports resolve
 python -m unittest discover -s tests -v
 ```
 
-Tests cover arithmetic evaluation and safety, math/general routing, fallback after an invalid calculation, all supervisor-worker routes, and switching the Streamlit UI between workflows. They mock model calls, so no API key or network access is needed to run tests.
+Tests cover arithmetic evaluation and safety, math/general routing, fallback after an invalid calculation, all supervisor-worker routes, Reflection revisions, approvals and retry limits, and switching the Streamlit UI between workflows. They mock model calls, so no API key or network access is needed to run tests.
 
 ## Project layout
 
@@ -79,6 +83,7 @@ config/llm.py                  OpenAI chat-model configuration
 patterns/using_tools/graph.py  LangGraph workflow and public answer function
 patterns/using_tools/nodes.py  Routing, math, and fallback agents
 patterns/supervisor_worker/    Supervisor-worker LangGraph workflow
+patterns/reflection/           Generator-critic reflection workflow
 tools/calculator.py            Safe arithmetic evaluator
 tools/leaves_db.py             SQLite leave-balance demo data
 tests/test_workflow.py         Backend and UI tests

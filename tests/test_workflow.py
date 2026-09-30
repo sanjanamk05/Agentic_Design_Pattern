@@ -113,6 +113,45 @@ class SupervisorWorkerTests(unittest.TestCase):
         self.assertEqual(result["employee_name"], "Alice")
         self.assertEqual(result["result"], "Alice has 12 leave days remaining.")
 
+
+class ReflectionTests(unittest.TestCase):
+    def test_critic_feedback_causes_revision_then_approval(self):
+        from patterns.reflection.graph import run_query
+
+        fake_llm = FakeTextLLM(
+            "First draft.",
+            '{"needs_revision": true, "feedback": "Add one concrete detail."}',
+            "Revised draft with a concrete detail.",
+            '{"needs_revision": false, "feedback": "The task is satisfied."}',
+        )
+        with patch("patterns.reflection.nodes._llm_for_config", return_value=fake_llm):
+            result = run_query("Write a short explanation.")
+
+        self.assertEqual(result["attempts"], 2)
+        self.assertEqual(result["status"], "approved")
+        self.assertEqual(result["final_answer"], "Revised draft with a concrete detail.")
+        self.assertEqual(len(result["history"]), 2)
+        self.assertEqual(result["history"][0]["feedback"], "Add one concrete detail.")
+        self.assertEqual(result["history"][1]["status"], "approved")
+
+    def test_reflection_stops_after_three_drafts(self):
+        from patterns.reflection.graph import run_query
+
+        fake_llm = FakeTextLLM(
+            "Draft one.",
+            '{"needs_revision": true, "feedback": "Try again."}',
+            "Draft two.",
+            '{"needs_revision": true, "feedback": "Try again."}',
+            "Draft three.",
+            '{"needs_revision": true, "feedback": "Still needs work."}',
+        )
+        with patch("patterns.reflection.nodes._llm_for_config", return_value=fake_llm):
+            result = run_query("Write a short explanation.")
+
+        self.assertEqual(result["attempts"], 3)
+        self.assertEqual(len(result["history"]), 3)
+        self.assertEqual(result["status"], "needs_improvement")
+
     def test_supervisor_routes_generic_question_to_general_worker(self):
         from patterns.supervisor_worker.graph import build_graph as build_supervisor_graph
 
@@ -161,6 +200,41 @@ class StreamlitAppTests(unittest.TestCase):
 
         self.assertFalse(list(app.exception))
         self.assertIn("General-answer worker", [item.value for item in app.caption])
+
+        app.segmented_control[0].set_value("Reflection").run()
+        self.assertFalse(list(app.exception))
+        self.assertEqual([item.value for item in app.title], ["Reflection agent"])
+
+        reflection_result = {
+            "attempts": 2,
+            "status": "approved",
+            "final_answer": "Python has readable syntax.",
+            "history": [
+                {
+                    "attempt": 1,
+                    "draft": "Python is good.",
+                    "feedback": "Be more specific.",
+                    "status": "needs_improvement",
+                },
+                {
+                    "attempt": 2,
+                    "draft": "Python has readable syntax.",
+                    "feedback": "Looks good.",
+                    "status": "approved",
+                },
+            ],
+        }
+        with patch("patterns.reflection.graph.run_query", return_value=reflection_result):
+            app.chat_input[0].set_value("Explain Python syntax.").run()
+
+        self.assertFalse(list(app.exception))
+        self.assertTrue(
+            any("Reflection approved" in item.value for item in app.caption)
+        )
+        feedback_captions = [
+            item.value for item in app.caption if item.value.startswith("Critic feedback:")
+        ]
+        self.assertEqual(len(feedback_captions), 2)
 
 
 if __name__ == "__main__":
