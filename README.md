@@ -28,7 +28,7 @@ pip install -r requirements.txt
 Copy-Item .env.example .env
 ```
 
-Open `.env` and replace the placeholder with your API key. The app also accepts `OPENAI_API_KEY` from the process environment or Streamlit secrets. Never commit `.env` or `.streamlit/secrets.toml`.
+Open `.env` and replace the placeholder with your API key. The loader checks `.env` in the repository first and then the parent workspace directory. The app also accepts `OPENAI_API_KEY` from the process environment or Streamlit secrets. Never commit `.env` or `.streamlit/secrets.toml`.
 
 To use Streamlit secrets instead, create `.streamlit/secrets.toml`:
 

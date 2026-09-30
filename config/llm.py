@@ -8,7 +8,9 @@ from langchain_openai import ChatOpenAI
 
 @lru_cache(maxsize=1)
 def get_llm(api_key: str | None = None) -> ChatOpenAI:
-    load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+    project_root = Path(__file__).resolve().parents[1]
+    load_dotenv(project_root / ".env")
+    load_dotenv(project_root.parent / ".env")
     resolved_api_key = api_key or os.getenv("OPENAI_API_KEY")
     if not resolved_api_key:
         raise RuntimeError(
