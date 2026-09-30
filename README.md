@@ -1,6 +1,6 @@
 # Agentic design pattern: tool-using agent
 
-A small LangGraph workflow that answers arithmetic questions with a calculator and routes definitions or other non-arithmetic requests to a general-answer fallback. A Streamlit chat interface is included.
+A set of LangGraph agentic-pattern demonstrations with a Streamlit chat interface. Choose between the tool-using workflow and the supervisor-worker workflow from the selector at the top of the app.
 
 ## How it works
 
@@ -10,6 +10,15 @@ A small LangGraph workflow that answers arithmetic questions with a calculator a
 4. If a generated math expression is invalid or cannot be evaluated, the workflow falls back to a natural-language answer instead of stopping with a calculator error.
 
 The calculator parses an allowlisted arithmetic syntax tree; it does not use Python `eval`. It supports numeric literals, parentheses, unary signs, addition, subtraction, multiplication, division, floor division, modulo, and bounded exponentiation.
+
+### Supervisor-worker workflow
+
+1. The supervisor classifies a request as `math`, `leave`, or `general`.
+2. Math requests go to a math worker, which asks the model for an arithmetic expression and evaluates it with the same safe calculator.
+3. Leave requests go to a leave worker, which extracts an employee name and queries SQLite.
+4. Definitions, explanations, and other non-math/non-leave requests go to a general-answer worker.
+
+The leave database is created on first use at `tools/employee_leaves.db` and seeded with demo balances: Alice (12), Bob (5), and Charlie (18). The database file is ignored by Git.
 
 ## Requirements
 
@@ -44,7 +53,7 @@ The model defaults to `gpt-4o-mini`. Set `OPENAI_MODEL` in `.env` to choose a co
 streamlit run app.py
 ```
 
-The app opens at `http://localhost:8501`. Try prompts such as `Define AI` or `What is the square of the average of 10 and 5?`. The chat labels which route answered each question. Conversation history stays in Streamlit session state and is cleared with **New conversation**.
+The app opens at `http://localhost:8501`. Select a workflow, then try prompts such as `Define AI`, `What is the square of the average of 10 and 5?`, or `What is the leave balance for Alice?`. The chat labels the selected route or worker. Each workflow has its own in-memory conversation history; **New conversation** clears the selected workflow's history.
 
 The backend can also be run without the UI:
 
@@ -60,7 +69,7 @@ Run module commands from the repository root so package-relative imports resolve
 python -m unittest discover -s tests -v
 ```
 
-Tests cover arithmetic evaluation and safety, math/general routing, fallback after an invalid calculation, and initial Streamlit rendering. They mock the model calls, so no API key or network access is needed to run tests.
+Tests cover arithmetic evaluation and safety, math/general routing, fallback after an invalid calculation, all supervisor-worker routes, and switching the Streamlit UI between workflows. They mock model calls, so no API key or network access is needed to run tests.
 
 ## Project layout
 
@@ -69,6 +78,8 @@ app.py                         Streamlit chat UI
 config/llm.py                  OpenAI chat-model configuration
 patterns/using_tools/graph.py  LangGraph workflow and public answer function
 patterns/using_tools/nodes.py  Routing, math, and fallback agents
+patterns/supervisor_worker/    Supervisor-worker LangGraph workflow
 tools/calculator.py            Safe arithmetic evaluator
+tools/leaves_db.py             SQLite leave-balance demo data
 tests/test_workflow.py         Backend and UI tests
 ```

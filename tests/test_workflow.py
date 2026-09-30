@@ -1,5 +1,6 @@
 import unittest
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from patterns.using_tools.graph import build_graph
@@ -30,6 +31,14 @@ class FakeLLM:
 
     def invoke(self, _messages):
         return FakeResponse(self.answer)
+
+
+class FakeTextLLM:
+    def __init__(self, *responses: str):
+        self.responses = iter(responses)
+
+    def invoke(self, _messages):
+        return FakeResponse(next(self.responses))
 
 
 class CalculatorTests(unittest.TestCase):
@@ -72,6 +81,60 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(result["answer"], "Division by zero is undefined.")
 
 
+class SupervisorWorkerTests(unittest.TestCase):
+    def test_supervisor_routes_calculation_to_math_worker(self):
+        from patterns.supervisor_worker.graph import build_graph as build_supervisor_graph
+
+        fake_llm = FakeTextLLM("math", "((10 + 5) / 2) ** 2")
+        with patch("patterns.supervisor_worker.nodes._llm_for_config", return_value=fake_llm):
+            result = build_supervisor_graph().invoke(
+                {"query": "What is the square of the average of 10 and 5?"}
+            )
+
+        self.assertEqual(result["worker"], "math")
+        self.assertEqual(result["result"], "56.25")
+
+    def test_supervisor_routes_leave_request_to_leave_worker(self):
+        from patterns.supervisor_worker.graph import build_graph as build_supervisor_graph
+
+        fake_llm = FakeTextLLM("leave", "Alice")
+        with (
+            patch("patterns.supervisor_worker.nodes._llm_for_config", return_value=fake_llm),
+            patch(
+                "patterns.supervisor_worker.nodes.get_leave_balance",
+                return_value="Alice has 12 leave days remaining.",
+            ),
+        ):
+            result = build_supervisor_graph().invoke(
+                {"query": "What is the leave balance for Alice?"}
+            )
+
+        self.assertEqual(result["worker"], "leave")
+        self.assertEqual(result["employee_name"], "Alice")
+        self.assertEqual(result["result"], "Alice has 12 leave days remaining.")
+
+    def test_supervisor_routes_generic_question_to_general_worker(self):
+        from patterns.supervisor_worker.graph import build_graph as build_supervisor_graph
+
+        fake_llm = FakeTextLLM("general", "AI is the field of building intelligent systems.")
+        with patch("patterns.supervisor_worker.nodes._llm_for_config", return_value=fake_llm):
+            result = build_supervisor_graph().invoke({"query": "Define AI"})
+
+        self.assertEqual(result["worker"], "general")
+        self.assertEqual(result["answer"], "AI is the field of building intelligent systems.")
+        self.assertEqual(result["result"], result["answer"])
+
+    def test_leave_database_returns_case_insensitive_seeded_balance(self):
+        from tools.leaves_db import get_leave_balance
+
+        with TemporaryDirectory() as temporary_directory:
+            database_path = Path(temporary_directory) / "employee_leaves.db"
+            with patch("tools.leaves_db.DB_PATH", database_path):
+                result = get_leave_balance("alice")
+
+        self.assertEqual(result, "Alice has 12 leave days remaining.")
+
+
 class StreamlitAppTests(unittest.TestCase):
     def test_chat_app_renders_without_a_configured_api_key(self):
         from streamlit.testing.v1 import AppTest
@@ -81,6 +144,23 @@ class StreamlitAppTests(unittest.TestCase):
 
         self.assertFalse(list(app.exception))
         self.assertEqual([item.value for item in app.title], ["Tool-using agent"])
+
+        app.segmented_control[0].set_value("Supervisor-worker").run()
+        self.assertFalse(list(app.exception))
+        self.assertEqual([item.value for item in app.title], ["Supervisor-worker agent"])
+
+        with patch(
+            "patterns.supervisor_worker.graph.run_query",
+            return_value={
+                "worker": "general",
+                "answer": "AI is the field of building intelligent systems.",
+                "result": "AI is the field of building intelligent systems.",
+            },
+        ):
+            app.chat_input[0].set_value("Define AI").run()
+
+        self.assertFalse(list(app.exception))
+        self.assertIn("General-answer worker", [item.value for item in app.caption])
 
 
 if __name__ == "__main__":
